@@ -18,9 +18,13 @@ from w3lib.url import path_to_file_uri
 import scrapy
 from scrapy.extensions.feedexport import (
     IFeedStorage, FileFeedStorage, FTPFeedStorage,
-    S3FeedStorage, StdoutFeedStorage,
+    S3FeedStorage, GCSFeedStorage, StdoutFeedStorage,
     BlockingFeedStorage)
-from scrapy.utils.test import assert_aws_environ, get_s3_content_and_delete, get_crawler
+from scrapy.utils.test import (
+    assert_aws_environ, get_s3_content_and_delete,
+    assert_gcs_environ, get_gcs_content_and_delete,
+    get_crawler
+)
 from scrapy.utils.python import to_native_str
 
 
@@ -144,6 +148,34 @@ class S3FeedStorageTest(unittest.TestCase):
         yield storage.store(file)
         u = urlparse(uri)
         content = get_s3_content_and_delete(u.hostname, u.path[1:])
+        self.assertEqual(content, expected_content)
+
+
+class GCSFeedStorageTest(unittest.TestCase):
+
+    def get_test_spider(self, settings=None):
+        class TestSpider(scrapy.Spider):
+            name = 'test_spider'
+        crawler = get_crawler(settings_dict=settings)
+        spider = TestSpider.from_crawler(crawler)
+        return spider
+
+    @defer.inlineCallbacks
+    def test_store(self):
+        assert_gcs_environ()
+        uri = os.environ.get('GCS_TEST_FILE_URI')
+        if not uri:
+            raise unittest.SkipTest("No GCS URI available for testing")
+        storage = GCSFeedStorage(uri)
+        verifyObject(IFeedStorage, storage)
+        tests_path = os.path.dirname(os.path.abspath(__file__))
+        spider = self.get_test_spider({'FEED_TEMPDIR': tests_path})
+        file = storage.open(spider)
+        expected_content = b"content: \xe2\x98\x83"
+        file.write(expected_content)
+        yield storage.store(file)
+        bucket, prefix = uri[5:].split('/', 1)
+        content, _ = get_gcs_content_and_delete(bucket, prefix)
         self.assertEqual(content, expected_content)
 
 
