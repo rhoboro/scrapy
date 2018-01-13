@@ -124,6 +124,22 @@ class S3FeedStorage(BlockingFeedStorage):
             key.close()
 
 
+class GCSFeedStorage(BlockingFeedStorage):
+
+    def __init__(self, uri):
+        from scrapy.conf import settings
+        from google.cloud import storage
+        client = storage.Client(project=settings['GCS_PROJECT_ID'])
+        bucket, prefix = uri[5:].split('/', 1)
+        self.bucket = client.bucket(bucket)
+        self.prefix = prefix
+
+    def _store_in_thread(self, file):
+        file.seek(0)
+        blob = self.bucket.blob(self.prefix)
+        blob.upload_from_string(data=file.read(), content_type="text/plain")
+
+
 class FTPFeedStorage(BlockingFeedStorage):
 
     def __init__(self, uri):
